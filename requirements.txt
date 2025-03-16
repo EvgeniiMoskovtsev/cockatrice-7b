@@ -1,11 +1,13 @@
-flask==3.0.2
-torch==2.2.0
-vllm==0.2.7  # Более стабильная версия с поддержкой torch 2.2.0
-transformers==4.38.2
-accelerate==0.27.2
-numpy==1.26.4
-typing-extensions>=4.8.0
-ninja  # для ускорения компиляции CUDA кернелов
-psutil  # для мониторинга системных ресурсов
-ray>=2.9.0  # требуется для vllm 
-bitsandbytes>=0.41.1  # Для поддержки int8 квантизации 
+torch
+vllm 
+transformers
+accelerate
+numpy
+typing-extensions
+ninja 
+psutil  
+ray  
+bitsandbytes 
+fastapi
+uvicorn
+pydantic
