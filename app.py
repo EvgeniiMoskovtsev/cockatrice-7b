@@ -4,7 +4,6 @@ import time
 import logging
 from datetime import datetime
 from vllm import LLM, SamplingParams
-from vllm.quantization import QuantizationConfig
 import argparse
 import uvicorn
 
@@ -35,20 +34,11 @@ def load_model(use_quantization: bool = False):
     
     model_path = "/root/models/cockatrice"
     
-    if use_quantization:
-        quantization_config = QuantizationConfig(
-            bits=8,
-            group_size=128,
-            dequantize=True
-        )
-    else:
-        quantization_config = None
-
     return LLM(
         model=model_path,
         tensor_parallel_size=1,
         gpu_memory_utilization=0.9,
-        quantization=quantization_config,
+        quantization="fp8" if use_quantization else None,
         trust_remote_code=True
     )
 
