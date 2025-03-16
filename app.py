@@ -1,11 +1,13 @@
-from flask import Flask, request, jsonify
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import time
 import logging
 from datetime import datetime
+from vllm import LLM, SamplingParams
+from vllm.quantization import QuantizationConfig
+import argparse
+import uvicorn
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -16,82 +18,94 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = FastAPI(title="Cockatrice API")
 
-MODEL_NAME = "openerotica/cockatrice-7b-v0.1"
+class GenerationRequest(BaseModel):
+    prompt: str
+    max_length: int = 100
+    temperature: float = 0.7
 
-print("Загрузка модели и токенизатора...")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    torch_dtype=torch.float16,
-    device_map="auto",
-    # load_in_8bit=True 
-)
-print("Модель загружена успешно!")
+class GenerationResponse(BaseModel):
+    generated_text: str
+    metrics: dict
+    status: str
 
-@app.route('/generate', methods=['POST'])
-def generate():
+def load_model(use_quantization: bool = False):
+    logger.info(f"Загрузка модели с квантизацией: {use_quantization}")
+    
+    model_path = "/root/models/cockatrice"
+    
+    if use_quantization:
+        quantization_config = QuantizationConfig(
+            bits=8,
+            group_size=128,
+            dequantize=True
+        )
+    else:
+        quantization_config = None
+
+    return LLM(
+        model=model_path,
+        tensor_parallel_size=1,
+        gpu_memory_utilization=0.9,
+        quantization=quantization_config,
+        trust_remote_code=True
+    )
+
+# Глобальная переменная для хранения модели
+llm = None
+
+@app.on_event("startup")
+async def startup_event():
+    global llm
+    # Получаем аргументы командной строки
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--quantize", action="store_true", help="Использовать квантизацию")
+    args, _ = parser.parse_known_args()
+    
+    # Загружаем модель с нужными параметрами
+    llm = load_model(args.quantize)
+    logger.info("Модель успешно загружена!")
+
+@app.post("/generate", response_model=GenerationResponse)
+async def generate(request: GenerationRequest):
     try:
-        # Начало измерения общего времени запроса
         request_start_time = time.time()
         
-        data = request.json
-        prompt = data.get('prompt', '')
-        max_length = data.get('max_length', 100)
-        temperature = data.get('temperature', 0.7)
+        sampling_params = SamplingParams(
+            temperature=request.temperature,
+            max_tokens=request.max_length,
+            top_p=0.95
+        )
         
-        # Измеряем время токенизации
-        tokenization_start = time.time()
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        tokenization_time = time.time() - tokenization_start
-        
-        # Измеряем время генерации
         generation_start = time.time()
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_length=max_length,
-                temperature=temperature,
-                do_sample=True,
-                pad_token_id=tokenizer.eos_token_id
-            )
+        outputs = llm.generate(request.prompt, sampling_params)
         generation_time = time.time() - generation_start
         
-        # Измеряем время декодирования
-        decoding_start = time.time()
-        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        decoding_time = time.time() - decoding_start
+        generated_text = outputs[0].outputs[0].text
         
-        # Общее время запроса
         total_time = time.time() - request_start_time
         
-        # Логируем метрики
         metrics = {
             'timestamp': datetime.now().isoformat(),
-            'prompt_length': len(prompt),
+            'prompt_length': len(request.prompt),
             'output_length': len(generated_text),
-            'tokenization_time': round(tokenization_time, 3),
             'generation_time': round(generation_time, 3),
-            'decoding_time': round(decoding_time, 3),
             'total_time': round(total_time, 3)
         }
         
         logger.info(f"Request metrics: {metrics}")
         
-        return jsonify({
-            'generated_text': generated_text,
-            'metrics': metrics,
-            'status': 'success'
-        })
+        return GenerationResponse(
+            generated_text=generated_text,
+            metrics=metrics,
+            status='success'
+        )
     
     except Exception as e:
         error_time = time.time() - request_start_time
         logger.error(f"Error occurred after {error_time:.3f} seconds: {str(e)}")
-        return jsonify({
-            'error': str(e),
-            'status': 'error'
-        }), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000) 
+    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=False) 

@@ -1,8 +1,11 @@
-transformers>=4.36.0
-torch>=2.0.0
-accelerate>=0.25.0
-flask>=2.0.0
-numpy>=1.24.0
-sentencepiece>=0.1.99
-protobuf>=4.25.0
-bitsandbytes>=0.41.0 
+flask==3.0.2
+torch==2.2.0
+vllm==0.2.7  # Более стабильная версия с поддержкой torch 2.2.0
+transformers==4.38.2
+accelerate==0.27.2
+numpy==1.26.4
+typing-extensions>=4.8.0
+ninja  # для ускорения компиляции CUDA кернелов
+psutil  # для мониторинга системных ресурсов
+ray>=2.9.0  # требуется для vllm 
+bitsandbytes>=0.41.1  # Для поддержки int8 квантизации 
