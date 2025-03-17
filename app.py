@@ -39,7 +39,8 @@ def load_model(use_quantization: bool = False):
         tensor_parallel_size=1,
         gpu_memory_utilization=0.9,
         quantization="fp8" if use_quantization else None,
-        trust_remote_code=True
+        trust_remote_code=True,
+        max_model_len=23000
     )
 
 # Глобальная переменная для хранения модели
